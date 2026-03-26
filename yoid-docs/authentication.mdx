@@ -1,0 +1,144 @@
+---
+title: "Authentication"
+description: "How to obtain and manage access tokens for the YoID API."
+---
+
+## Overview
+
+All API endpoints require authentication using an **access token** provided as a Bearer token in the `Authorization` header.
+
+## Obtaining an Access Token
+
+Submit your `clientId` and `clientSecret` to the IAM endpoint using a `POST` request with the `client_credentials` grant type.
+
+```bash
+curl -X POST "https://test.didxtech.com/iam/realms/product-hub/protocol/openid-connect/token" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "grant_type=client_credentials&client_id=your_client_id&client_secret=your_client_secret"
+```
+
+### Response
+
+```json
+{
+  "access_token": "eyJhbGciOiJSUzI1NiIsI...",
+  "expires_in": 300,
+  "refresh_expires_in": 0,
+  "token_type": "Bearer",
+  "not-before-policy": 0,
+  "scope": "email profile"
+}
+```
+
+## Using the Access Token
+
+Include the token in the `Authorization` header for all subsequent API requests:
+
+```bash
+-H "Authorization: Bearer <access_token>"
+```
+
+## Token Expiry and Caching
+
+<Warning>
+  Access tokens expire after **300 seconds** (5 minutes). There is no refresh token — you must request a new token when the current one expires.
+</Warning>
+
+This short expiry is unusual and will catch you if you don't plan for it. Here's the recommended pattern:
+
+### Token Caching Pattern
+
+Cache the token and refresh it proactively before it expires. Don't request a new token for every API call.
+
+```javascript
+let cachedToken = null;
+let tokenExpiresAt = 0;
+
+async function getAccessToken() {
+  const now = Date.now();
+
+  // Refresh 30 seconds before expiry to avoid race conditions
+  if (cachedToken && now < tokenExpiresAt - 30000) {
+    return cachedToken;
+  }
+
+  const response = await fetch(
+    "https://test.didxtech.com/iam/realms/product-hub/protocol/openid-connect/token",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "client_credentials",
+        client_id: process.env.YOID_CLIENT_ID,
+        client_secret: process.env.YOID_CLIENT_SECRET,
+      }),
+    }
+  );
+
+  const data = await response.json();
+  cachedToken = data.access_token;
+  tokenExpiresAt = now + data.expires_in * 1000;
+  return cachedToken;
+}
+```
+
+```python
+import time
+import requests
+
+_cached_token = None
+_token_expires_at = 0
+
+def get_access_token():
+    global _cached_token, _token_expires_at
+
+    now = time.time()
+
+    # Refresh 30 seconds before expiry
+    if _cached_token and now < _token_expires_at - 30:
+        return _cached_token
+
+    response = requests.post(
+        "https://test.didxtech.com/iam/realms/product-hub/protocol/openid-connect/token",
+        data={
+            "grant_type": "client_credentials",
+            "client_id": YOID_CLIENT_ID,
+            "client_secret": YOID_CLIENT_SECRET,
+        },
+    )
+
+    data = response.json()
+    _cached_token = data["access_token"]
+    _token_expires_at = now + data["expires_in"]
+    return _cached_token
+```
+
+### Key Rules
+
+| Rule | Detail |
+|------|--------|
+| Cache tokens | Don't request a new token for every API call |
+| Refresh proactively | Request a new token ~30 seconds before expiry |
+| No refresh tokens | `refresh_expires_in: 0` means you must do a full `client_credentials` exchange each time |
+| Handle 401s | If you get a 401, your token has expired — request a new one and retry |
+
+## Token Lifecycle
+
+| Field | Value | Description |
+|-------|-------|-------------|
+| `expires_in` | `300` | Token validity in seconds (5 minutes) |
+| `refresh_expires_in` | `0` | No refresh token support |
+| `token_type` | `Bearer` | Use as a Bearer token in the Authorization header |
+
+## Next Steps
+
+With authentication working, choose your integration path:
+
+<CardGroup cols={2}>
+  <Card title="Issue Credentials" icon="graduation-cap" href="/api/issuers/overview">
+    For learning and impact partners who need to credential youth
+  </Card>
+  <Card title="Verify Credentials" icon="briefcase" href="/api/verifiers/overview">
+    For employers and opportunity providers who need to verify youth
+  </Card>
+</CardGroup>

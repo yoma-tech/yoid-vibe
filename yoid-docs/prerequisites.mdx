@@ -1,0 +1,57 @@
+---
+title: "Prerequisites"
+description: "What you need before integrating with the YoID platform."
+---
+
+## Partner Onboarding
+
+Before you can use the YoID API, your organisation must complete a partner setup handled by the YoID team.
+
+<Steps>
+  <Step title="Request access">
+    Contact the YoID team with your organisation name, a brief description of your use case (issuing, verifying, or both), and a technical contact email.
+  </Step>
+  <Step title="Credential creation">
+    The YoID team creates a unique `clientId` and `clientSecret` for your organisation in the **Product Hub** realm.
+  </Step>
+  <Step title="Secure delivery">
+    Your credentials are delivered securely via 1Password sharing.
+  </Step>
+  <Step title="Test environment access">
+    Use the test environment to build and validate your integration before going live.
+  </Step>
+</Steps>
+
+### What to Have Ready
+
+| Item | Details |
+|------|---------|
+| Organisation name | How your org appears in credential metadata |
+| Use case | Are you issuing credentials, verifying them, or both? |
+| Technical contact | Email of the developer who will implement the integration |
+| Webhook URL (optional) | An HTTPS endpoint to receive real-time event notifications |
+
+## Developer Requirements
+
+Your application must be able to:
+
+1. **Exchange credentials for tokens** — standard OAuth `client_credentials` flow via Keycloak
+2. **Handle short-lived tokens** — access tokens expire after 300 seconds (5 minutes) with no refresh token support
+3. **Make HTTPS requests** — all API communication uses TLS
+
+<Note>
+  Contact the YoID team at [support@yoma.world](mailto:support@yoma.world) to initiate partner onboarding and receive your credentials.
+</Note>
+
+## Understanding the Two Realms
+
+Your organisation and the youth you credential operate in separate authentication contexts:
+
+- **Product Hub** — your organisation's realm. This is where your `clientId` and `clientSecret` live. All API calls you make use tokens from this realm.
+- **Consumers** — the youth wallet realm. When a youth signs into their wallet, they authenticate here. You don't manage this directly, but knowing it exists helps you understand why credential delivery is asynchronous.
+
+When you issue a credential, it crosses from your Product Hub context into the youth's Consumer wallet context. This is by design — it's the privacy boundary that gives youth control over their own data.
+
+## Next Steps
+
+Once you have your `clientId` and `clientSecret`, proceed to [Authentication](/api/authentication) to learn how to obtain and manage access tokens.

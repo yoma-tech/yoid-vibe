@@ -1,0 +1,77 @@
+---
+title: "Step 2: Create a Presentation Request"
+description: "Generate a specific verification request from a template."
+---
+
+## Overview
+
+A presentation request is a single-use instance of a presentation template. It generates authorization URIs that you present to the youth, allowing them to share their credentials with your application.
+
+## Endpoint
+
+```
+POST https://test.didxtech.com/me-creds/api/presentations/request
+```
+
+## Request
+
+```bash
+curl -X POST "https://test.didxtech.com/me-creds/api/presentations/request" \
+  -H "Authorization: Bearer <access_token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "presentationTemplateId": "cm2ytsdid009u4ke3t30aiuvc"
+  }'
+```
+
+### Request Body
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `presentationTemplateId` | string | The `id` from the presentation template created in Step 1 |
+
+## Response
+
+**HTTP 200 OK**
+
+```json
+{
+  "data": {
+    "id": "cmbhsgi6c00cls60120oyb8tl",
+    "createdAt": "2025-06-04T10:12:20.101Z",
+    "updatedAt": "2025-06-04T10:12:20.101Z",
+    "status": "requested",
+    "error": null,
+    "presentationTemplateId": "cm2ytsdid009u4ke3t30aiuvc",
+    "credentials": [],
+    "expiresAt": "2025-07-04T10:12:20.088Z",
+    "authorizationRequestUri": "https://paradym.id/invitation?request_uri=...",
+    "authorizationRequestQrUri": "https://paradym.id/invitation?request_uri=...&qr=true"
+  }
+}
+```
+
+### Key Response Fields
+
+| Field | Description |
+|-------|-------------|
+| `id` | Unique presentation request identifier — save for Step 4 and webhook correlation |
+| `status` | `requested` initially; transitions when the youth responds |
+| `authorizationRequestUri` | Link the youth can paste into their wallet |
+| `authorizationRequestQrUri` | QR-optimized version for scanning with a wallet app |
+| `expiresAt` | Request expires after 30 days |
+
+## What Happens on the Youth's Side
+
+When the youth scans the QR code or taps the link:
+
+1. Their wallet launches and displays the verification request
+2. They see which organisation is asking (e.g. "JobJack") and what's being requested
+3. Their wallet shows all credentials that match the requested type
+4. They choose which credential to present
+5. They can selectively disclose attributes — sharing programme name while withholding assessment score
+6. They confirm or decline
+
+<Tip>
+  Save both the `id` (for verification in Step 4) and the `authorizationRequestQrUri` (for display in Step 3).
+</Tip>
