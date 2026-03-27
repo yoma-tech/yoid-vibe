@@ -474,8 +474,13 @@ Each Claude Code session should start with:
 The user will provide URLs in a format like:
 
 ```
-The YoID dev docs in are in this repo at main/yoid-docs
+Here are the YoID dev docs:
+- Authentication: https://raw.githubusercontent.com/org/yoid-docs/main/authentication.md
+- Issuance: https://raw.githubusercontent.com/org/yoid-docs/main/issuance.md
+- Verification: https://raw.githubusercontent.com/org/yoid-docs/main/verification.md
 ```
+
+The agent should store these in `docs/dev-docs-urls.md` for reference across sessions.
 
 ---
 
@@ -484,7 +489,7 @@ The YoID dev docs in are in this repo at main/yoid-docs
 ### Phase 0: Foundation
 **Goal:** Monorepo + proxy + shared types + env template
 
-- [ ] Fetch YoID dev docs 
+- [ ] Fetch YoID dev docs from provided URLs, store URL index in `docs/dev-docs-urls.md`
 - [ ] Read all dev docs thoroughly before writing any integration code
 - [ ] Initialise monorepo with npm workspaces
 - [ ] Set up shared types package (types derived from YoID dev docs)
@@ -492,6 +497,7 @@ The YoID dev docs in are in this repo at main/yoid-docs
 - [ ] Create `.env.example` with all required variables
 - [ ] Implement "not connected" error handling for missing credentials
 - [ ] Dev script to start proxy on port 3001
+- [ ] Create `docs/dev-docs-gaps.md` with logging template
 - [ ] `scripts/check-api.sh` — curl the auth endpoint to verify connectivity
 
 **Exit criteria:** Proxy starts, returns "NO_CREDENTIALS" error cleanly. When creds are added to `.env`, proxy can exchange them for a token and forward a request.
