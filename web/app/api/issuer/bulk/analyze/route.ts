@@ -20,6 +20,13 @@ export type AttributeMapping = {
 };
 
 export type AnalyzeResponse = {
+  /** What kind of data this file contains */
+  dataType: "opportunity" | "youth" | "combo";
+  /** Columns that describe the opportunity/program (same value across all rows, or describing what the credential is) */
+  opportunityColumns: string[];
+  /** Columns that describe individual participants (name, email, grade, score, etc.) */
+  youthColumns: string[];
+
   mode: "existing" | "new";
   // mode=existing: matched an existing template
   templateId?: string;
@@ -31,7 +38,7 @@ export type AnalyzeResponse = {
   suggestedTemplateDescription?: string;
   suggestedAttributes?: Record<string, { type: string; alwaysDisclosed: boolean }>;
   // shared
-  mapping: AttributeMapping[];   // column → attribute mappings
+  mapping: AttributeMapping[];   // column → attribute mappings (all columns, opp + youth)
   emailColumn: string | null;    // which column holds recipient email
   reasoning: string;
 };
@@ -64,9 +71,9 @@ export async function POST(req: NextRequest) {
       )
       .join("\n");
 
-    const prompt = `You are helping issue verifiable credentials on the YoID platform.
+    const prompt = `You are helping issue verifiable credentials on the YoID platform for youth development programmes.
 
-A user has uploaded a data file with the following columns and sample data:
+A partner has uploaded a data file. Here are the columns and sample data:
 
 COLUMNS: ${JSON.stringify(headers)}
 
@@ -76,26 +83,38 @@ ${sampleSection}
 EXISTING CREDENTIAL TEMPLATES:
 ${templatesSection}
 
-Your task:
-1. Determine if one of the existing templates is a strong fit for this data. A strong fit means ≥70% of the meaningful data columns map naturally to template attributes (ignoring email/name columns for this threshold).
-2. If a template fits, return its ID and a mapping of file columns to template attributes. CRITICAL: the "attribute" value in each mapping entry MUST be the EXACT key from the template's "attributes" object as shown above — not a display name, not a guess. Only use keys that literally appear in that template's attributes JSON.
-3. If no template fits well, suggest a new template: give it a name, description, and a set of attributes derived from the column names and sample data values. Infer attribute types: "string" for text, "number" for numeric values, "date" for dates.
-4. Always identify which column contains email addresses (this is used to deliver the credential to the recipient's wallet). If no email column exists, return null.
-5. For the mapping, only include columns that map to credential attributes — not the email column itself (that's handled separately).
-6. IMPORTANT: only map a column to an attribute if you are confident it is a genuine match. It is better to have fewer mappings than to include a wrong one that will fail validation.
+Your tasks:
+
+1. CLASSIFY the data type:
+   - "opportunity" — the file describes a programme/opportunity itself (e.g. course details, dates, provider). No individual participant rows.
+   - "youth" — the file is purely a list of participants (names, emails, scores) with no programme metadata.
+   - "combo" — the most common case: each row is a participant AND the programme info is embedded in columns (e.g. "Programme Name", "Start Date" alongside "Participant Name", "Score").
+
+2. SPLIT columns into two groups:
+   - opportunityColumns: columns that describe the opportunity/credential itself. These tend to have the same value across all rows (e.g. "Course Name", "Provider", "Start Date", "End Date").
+   - youthColumns: columns that identify individual participants or their results (e.g. "Name", "Email", "Score", "Grade", "Completion Date"). Include the email column here.
+
+3. TEMPLATE MATCHING: Determine if an existing template is a strong fit (≥70% of meaningful columns map to attributes). If yes, return its ID and a precise column→attribute mapping. The "attribute" value MUST be the exact key from the template's attributes JSON — not a display name or guess. If no template fits, suggest a new one derived from the data. The template should capture what the CREDENTIAL is about (use opportunity columns + any per-participant attributes).
+
+4. MAPPING: Return a mapping of file columns → credential attribute names. This covers both opportunity-level and youth-level columns (except the email column, which is handled separately).
+
+5. EMAIL: Identify which column holds participant email addresses (return null if none).
 
 Return ONLY valid JSON matching this exact shape:
 {
+  "dataType": "opportunity" | "youth" | "combo",
+  "opportunityColumns": ["<col>", ...],
+  "youthColumns": ["<col>", ...],
   "mode": "existing" | "new",
   "templateId": "<id if mode=existing>",
   "templateName": "<name if mode=existing>",
   "confidence": <0-100 if mode=existing>,
   "suggestedTemplateName": "<name if mode=new>",
   "suggestedTemplateDescription": "<description if mode=new>",
-  "suggestedAttributes": { "<attrName>": { "type": "string"|"number"|"date", "alwaysDisclosed": true|false } } (if mode=new),
+  "suggestedAttributes": { "<attrName>": { "type": "string"|"number"|"date", "alwaysDisclosed": true|false } },
   "mapping": [ { "column": "<file column>", "attribute": "<template attribute>" } ],
   "emailColumn": "<column name>" | null,
-  "reasoning": "<brief explanation of your decision>"
+  "reasoning": "<brief explanation of data type classification and template decision>"
 }`;
 
     const message = await getAnthropic().messages.create({
@@ -109,6 +128,10 @@ Return ONLY valid JSON matching this exact shape:
     if (!jsonMatch) throw new Error("Claude did not return valid JSON");
 
     const result = JSON.parse(jsonMatch[0]) as AnalyzeResponse;
+
+    // Ensure arrays are present (defensive)
+    result.opportunityColumns ??= [];
+    result.youthColumns ??= [];
 
     // Attach the real template attributes so the UI can show required field validation
     if (result.mode === "existing" && result.templateId) {

@@ -13,6 +13,8 @@ type BulkIssueRequest = {
   rows: Record<string, string>[];
   mapping: AttributeMapping[];       // column → attribute
   emailColumn: string | null;        // column that holds recipient email
+  // Fixed values typed by the user for missing required attrs (applied to every row)
+  staticAttributes?: Record<string, string>;
   // Existing template
   templateId?: string;
   templateName?: string;
@@ -31,6 +33,10 @@ type RowResult = {
   issuanceId?: string;
   email?: string;
   error?: string;
+  // Account creation outcome — surfaced in the UI "what would be emailed" panel
+  accountStatus?: "created" | "existing" | "skipped";
+  tempPassword?: string;   // only set when accountStatus === "created"
+  recipientName?: string;  // first + last from the row, used for email salutation
 };
 
 function encoder() {
@@ -43,7 +49,7 @@ function send(controller: ReadableStreamDefaultController, data: object) {
 
 export async function POST(req: NextRequest) {
   const body = (await req.json()) as BulkIssueRequest;
-  const { rows, mapping, emailColumn, newTemplate } = body;
+  const { rows, mapping, emailColumn, newTemplate, staticAttributes } = body;
   let { templateId, templateName } = body;
 
   const stream = new ReadableStream({
@@ -87,6 +93,12 @@ export async function POST(req: NextRequest) {
               attributes[attribute] = val;
             }
           }
+          // Merge static values typed by the user (e.g. providerName = "Yoma")
+          if (staticAttributes) {
+            for (const [attr, val] of Object.entries(staticAttributes)) {
+              if (val.trim() !== "") attributes[attr] = val;
+            }
+          }
 
           const email = emailColumn ? row[emailColumn] : undefined;
           const result: RowResult = { row: i + 1, status: "issued", email };
@@ -111,17 +123,30 @@ export async function POST(req: NextRequest) {
             if (email && record.offerUri) {
               try {
                 const firstName = String(row["firstName"] || row["first_name"] || row["First Name"] || "").trim();
-                const lastName = String(row["lastName"] || row["last_name"] || row["Last Name"] || "").trim();
+                const lastName  = String(row["lastName"]  || row["last_name"]  || row["Last Name"]  || "").trim();
+                result.recipientName = [firstName, lastName].filter(Boolean).join(" ") || email.split("@")[0];
 
-                // Create account (idempotent)
+                // Create wallet account — idempotent per GAP-005 (duplicate returns 201 + empty tempPassword)
                 try {
-                  await createUserAccount({ email, firstName: firstName || "Unknown", lastName: lastName || "User" });
+                  const acct = await createUserAccount({ email, firstName: firstName || "Unknown", lastName: lastName || "User" });
+                  if (acct?.tempPassword && acct.tempPassword !== "") {
+                    result.accountStatus = "created";
+                    result.tempPassword  = acct.tempPassword;
+                  } else {
+                    // Empty tempPassword = account already existed (GAP-005)
+                    result.accountStatus = "existing";
+                  }
                 } catch (err) {
                   const msg = errMsg(err).toLowerCase();
                   const isDuplicate =
                     msg.includes("400") || msg.includes("409") || msg.includes("already") ||
                     msg.includes("exists") || msg.includes("conflict") || msg.includes("duplicate");
-                  if (!isDuplicate) throw err;
+                  if (isDuplicate) {
+                    result.accountStatus = "existing";
+                  } else {
+                    result.accountStatus = "skipped";
+                    throw err;
+                  }
                 }
 
                 await sendCredentialToWallet(record.offerUri, email);
@@ -132,6 +157,8 @@ export async function POST(req: NextRequest) {
                 result.status = "issued";
                 result.error = `Issued but send failed: ${errMsg(sendErr)}`;
               }
+            } else {
+              result.accountStatus = "skipped";
             }
           } catch (err) {
             result.status = "error";

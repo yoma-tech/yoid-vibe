@@ -15,6 +15,13 @@ async function getAccessToken(): Promise<string> {
     return cachedToken.value;
   }
 
+  const missingVars = ["YOID_AUTH_URL", "YOID_API_URL", "YOID_CLIENT_ID", "YOID_CLIENT_SECRET"].filter(
+    k => !process.env[k]
+  );
+  if (missingVars.length > 0) {
+    throw new Error(`YoID not configured — missing env vars: ${missingVars.join(", ")}. Add them to .env.local.`);
+  }
+
   const params = new URLSearchParams({
     grant_type: "client_credentials",
     client_id: process.env.YOID_CLIENT_ID!,
@@ -256,6 +263,8 @@ export type UserAccount = {
   id: string;
   email: string;
   didUri?: string;
+  // Returned on account creation — empty string means account already existed (GAP-005)
+  tempPassword?: string;
 };
 
 export type PresentationTemplate = {
